@@ -4,9 +4,12 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.CookieStore;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.cookie.Cookie;
+import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
@@ -29,7 +32,9 @@ public class Application {
         log.info("Redirect example\n");
         log.info("Preparing Request to " + loginPath);
 
-        HttpClient client = HttpClients.createDefault();
+
+        CookieStore cookieStore = new BasicCookieStore();
+        HttpClient client = HttpClients.custom().setDefaultCookieStore(cookieStore).build();
         HttpPost req = new HttpPost(loginPath);
 
         // TODO: add HMAC Required Params
@@ -43,6 +48,7 @@ public class Application {
 
             HttpResponse res = client.execute(req);
             HttpEntity entity = res.getEntity();
+            String location = res.getFirstHeader("Location").toString();
 
             log.info("Response received");
             log.info("HTTP Error Code: " + res.getStatusLine());
@@ -55,25 +61,32 @@ public class Application {
 
             log.info("Body: \n\n" + EntityUtils.toString(entity));
 
-            if (res.getStatusLine().getStatusCode() == 302 &&
-                !res.getFirstHeader("Location")
-                        .toString()
-                        .contains("BadExternalLogin")) {
+            if (res.getStatusLine().getStatusCode() == 302 || res.getStatusLine().getStatusCode() == 301) {
 
-                log.info("Logged in");
-                log.info("Redirect to: " + res.getFirstHeader("Location").getValue());
+                if (location.contains("ExternalLogin")) {
 
+                    log.error("Bad Login Received");
+                    log.info("Redirect to: " + location);
 
-            } else {
+                    // TODO: send a response to client with an Error on the authentication process
 
-                log.error("Bad Login Received");
-                if (res.getStatusLine().getStatusCode() == 302) {
-                    log.info("Redirect to: " + res.getFirstHeader("Location").getValue());
-                    // TODO: send a sendRedirect() to client using Location value or baseUrl + Location value
+                } else {
+
+                    log.info("Logged in");
+                    log.info("Redirect to: " + location);
+
+                    Header[] setCookies = res.getHeaders("Set-Cookie");
+                    for (Header cookie : setCookies) {
+                        log.info(cookie.toString());
+                    }
+
+                    // TODO: send a sendRedirect() to client using location or baseUrl + location value using Set-Cookie values
+
                 }
 
+            } else {
+                log.info("Not a Redirect...");
             }
-
 
 
         } catch (Exception e) {
